@@ -284,6 +284,38 @@ require('lazy').setup({
       },
     },
   },
+  {
+    'mrcjkb/rustaceanvim',
+    -- To avoid being surprised by breaking changes,
+    -- I recommend you set a version range
+    version = '^9',
+    -- This plugin implements proper lazy-loading (see :h lua-plugin-lazy).
+    -- No need for lazy.nvim to lazy-load it.
+    lazy = false,
+  },
+  {
+    'Shatur/neovim-ayu',
+    priority = 1000,
+    config = function()
+      require('ayu').setup {
+        mirage = true, -- selects the "ayu mirage" variant
+        overrides = {
+          -- ayu has no `transparent = true`; opt in per highlight group.
+          Normal = { bg = 'None' },
+          NormalFloat = { bg = 'None' },
+          SignColumn = { bg = 'None' },
+          -- match the tokyonight setup: non-italic comments
+          Comment = { italic = false },
+          -- brighten the line-number gutter (dim by default, more so when transparent)
+          LineNr = { fg = '#8a91a3' },
+          LineNrAbove = { fg = '#8a91a3' },
+          LineNrBelow = { fg = '#8a91a3' },
+          CursorLineNr = { fg = '#ffcc66', bold = true }, -- ayu's yellow accent
+        },
+      }
+      vim.cmd.colorscheme 'ayu-mirage'
+    end,
+  },
 
   -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
   --
@@ -413,6 +445,9 @@ require('lazy').setup({
         --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
         --   },
         -- },
+        defaults = {
+          preview = { treesitter = false },
+        },
         -- pickers = {}
         extensions = {
           ['ui-select'] = {
@@ -684,13 +719,13 @@ require('lazy').setup({
         -- But for many setups, the LSP (`ts_ls`) will work just fine
         -- ts_ls = {},
         --
-        ruby_lsp = {
-          mason = false, -- Disable mason for this server so Ruby version can be implicit
-          cmd = { vim.fn.expand '~/.asdf/shims/ruby-lsp' },
-          -- filetypes = { ...},
-          -- capabilities = {},
-          settings = {},
-        },
+        -- ruby_lsp = {
+        -- mason = false, -- Disable mason for this server so Ruby version can be implicit
+        -- cmd = { vim.fn.expand '~/.asdf/shims/ruby-lsp' },
+        -- -- filetypes = { ...},
+        -- -- capabilities = {},
+        -- settings = {},
+        --},
 
         lua_ls = {
           -- cmd = { ... },
@@ -899,17 +934,21 @@ require('lazy').setup({
     'doums/darcula',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     config = function()
+      -- NOTE: darcula is kept installed but does NOT set the colorscheme on
+      -- startup, so it won't override tokyonight (set in the block above).
+      -- Run `:colorscheme darcula` manually if you want to switch to it.
+      --
       -- Load the colorscheme here.
       -- Like many other themes, this one has different styles, and you could load
       -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'darcula'
+      -- vim.cmd.colorscheme 'darcula'
 
       -- You can configure highlights by doing something like:
-      vim.cmd.hi 'Boolean guifg=#CC7832'
+      -- vim.cmd.hi 'Boolean guifg=#CC7832'
       -- vim.cmd.hi 'Keyword guifg=#CC7832'
       -- vim.cmd.hi 'Constant guifg=#9876AA'
       -- vim.cmd.hi 'Special guifg=#BBB529 gui=none'
-      vim.cmd.hi 'Type guifg=#FFC66D'
+      -- vim.cmd.hi 'Type guifg=#FFC66D'
     end,
   },
 
@@ -955,6 +994,7 @@ require('lazy').setup({
   },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
+    branch = 'master', -- The kickstart config below uses the classic (master) API; `main` is a rewrite with a different API
     build = ':TSUpdate',
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
