@@ -110,6 +110,8 @@ vim.o.mouse = 'a'
 -- Don't show the mode, since it's already in the status line
 vim.o.showmode = false
 
+vim.o.winborder = 'rounded'
+
 -- Sync clipboard between OS and Neovim.
 --  Schedule the setting after `UiEnter` because it can increase startup-time.
 --  Remove this option if you want your OS clipboard to remain independent.
@@ -160,6 +162,14 @@ vim.o.inccommand = 'split'
 -- Minimal number of screen lines to keep above and below the cursor.
 vim.o.scrolloff = 10
 
+-- Mouse/trackpad wheel scroll speed. Default is `ver:3` (3 lines per tick), which
+-- feels fast on a trackpad. `ver:1` scrolls one line per wheel event. See `:help 'mousescroll'`.
+vim.o.mousescroll = 'ver:1,hor:2'
+
+-- Scroll by screen line (not whole buffer line) so scrolling through long wrapped
+-- lines glides instead of jumping. See `:help 'smoothscroll'`.
+vim.o.smoothscroll = true
+
 -- if performing an operation that would fail due to unsaved changes in the buffer (like `:q`),
 -- instead raise a dialog asking if you wish to save the current file(s)
 -- See `:help 'confirm'`
@@ -175,6 +185,18 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+
+-- Yank the current file's path to the system clipboard (@+)
+vim.keymap.set('n', '<leader>yp', function()
+  local p = vim.fn.expand '%:p'
+  vim.fn.setreg('+', p)
+  vim.notify('Yanked path: ' .. p)
+end, { desc = '[Y]ank full [P]ath' })
+vim.keymap.set('n', '<leader>yr', function()
+  local p = vim.fn.expand '%'
+  vim.fn.setreg('+', p)
+  vim.notify('Yanked path: ' .. p)
+end, { desc = '[Y]ank [R]elative path' })
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -314,6 +336,22 @@ require('lazy').setup({
         },
       }
       vim.cmd.colorscheme 'ayu-mirage'
+
+      -- Neo-tree color tweaks: make directories the same gray as unchanged files,
+      -- and make brand-new (untracked) files green like added ones. Changed files
+      -- keep their blue (NeoTreeGitModified) untouched.
+      local function tune_neotree_hl()
+        vim.api.nvim_set_hl(0, 'NeoTreeDirectoryName', { fg = '#cccac2' }) -- gray, like unchanged files
+        vim.api.nvim_set_hl(0, 'NeoTreeDirectoryIcon', { fg = '#cccac2' })
+        vim.api.nvim_set_hl(0, 'NeoTreeGitUntracked', { fg = '#87d96c' }) -- green, like added
+      end
+      -- Re-apply after any colorscheme (re)load so it wins over Neo-tree's defaults.
+      vim.api.nvim_create_autocmd('ColorScheme', {
+        callback = function()
+          vim.schedule(tune_neotree_hl)
+        end,
+      })
+      tune_neotree_hl()
     end,
   },
 
@@ -900,7 +938,7 @@ require('lazy').setup({
       completion = {
         -- By default, you may press `<c-space>` to show the documentation.
         -- Optionally, set `auto_show = true` to show the documentation after a delay.
-        documentation = { auto_show = false, auto_show_delay_ms = 500 },
+        documentation = { auto_show = true, auto_show_delay_ms = 500 },
       },
 
       sources = {
@@ -988,35 +1026,110 @@ require('lazy').setup({
         return '%2l:%-2v'
       end
 
+      -- Minimap down the right side, with git changes, diagnostics, and search
+      -- highlighted. Git add/change/delete markers come from the gitsigns integration.
+      --  - <leader>mm  toggle the minimap
+      --  - <leader>mf  toggle focus into it (then scroll/jump around)
+      --  - <leader>mr  refresh it manually
+      local minimap = require 'mini.map'
+      minimap.setup {
+        integrations = {
+          minimap.gen_integration.builtin_search(),
+          minimap.gen_integration.diagnostic(),
+          minimap.gen_integration.gitsigns(), -- colors added/changed/removed lines
+        },
+        symbols = {
+          encode = minimap.gen_encode_symbols.dot '4x2',
+        },
+        window = {
+          side = 'right',
+          width = 12,
+          winblend = 25,
+          show_integration_count = true,
+        },
+      }
+      vim.keymap.set('n', '<leader>mm', minimap.toggle, { desc = '[M]inimap: toggle' })
+      vim.keymap.set('n', '<leader>mf', minimap.toggle_focus, { desc = '[M]inimap: [f]ocus' })
+      vim.keymap.set('n', '<leader>mr', minimap.refresh, { desc = '[M]inimap: [r]efresh' })
+
+      -- Keep the minimap open all the time. It persists as you edit and auto-refreshes;
+      -- toggle it off anytime with <leader>mm.
+      vim.api.nvim_create_autocmd('VimEnter', {
+        callback = function()
+          minimap.open()
+        end,
+      })
+
       -- ... and there is more!
       --  Check out: https://github.com/echasnovski/mini.nvim
     end,
   },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
-    branch = 'master', -- The kickstart config below uses the classic (master) API; `main` is a rewrite with a different API
+    -- The `main` branch is the rewrite required for Neovim 0.12+.
+    -- The classic `master` branch explicitly does NOT support 0.12 and crashes on
+    -- injected languages (e.g. markdown code fences) with "attempt to call method 'range'".
+    branch = 'main',
+    lazy = false, -- the `main` branch does not support lazy-loading
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-    opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
-      -- Autoinstall languages that are not installed
-      auto_install = true,
-      highlight = {
-        enable = true,
-        -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
-        --  If you are experiencing weird indenting issues, add the language to
-        --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
-      },
-      indent = { enable = true, disable = { 'ruby' } },
-    },
-    -- There are additional nvim-treesitter modules that you can use to interact
-    -- with nvim-treesitter. You should go explore a few and see what interests you:
-    --
-    --    - Incremental selection: Included, see `:help nvim-treesitter-incremental-selection-mod`
-    --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
-    --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
+    config = function()
+      require('nvim-treesitter').setup {
+        -- Parsers/queries install here. This dir is prepended to runtimepath, so these
+        -- take priority over Neovim's bundled parsers (and over any stale plugin parsers).
+        install_dir = vim.fn.stdpath 'data' .. '/site',
+      }
+
+      -- Parsers to keep installed. Add languages here, or run `:TSInstall <lang>` on demand
+      -- (the `main` branch has no `auto_install`). Install runs asynchronously.
+      require('nvim-treesitter').install {
+        'bash',
+        'c',
+        'diff',
+        'html',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'query',
+        'vim',
+        'vimdoc',
+      }
+
+      -- On `main`, highlighting/indentation are no longer plugin "modules" — enable them
+      -- per-buffer. Neovim provides the highlighting via `vim.treesitter.start()`.
+      local function enable(buf)
+        local ft = vim.bo[buf].filetype
+        local lang = vim.treesitter.language.get_lang(ft) or ft
+        -- Start treesitter highlighting; bail quietly if no parser is installed for this ft.
+        if not pcall(vim.treesitter.start, buf, lang) then
+          return
+        end
+        if ft == 'ruby' then
+          -- Ruby still wants Vim's regex highlighting on top (and no treesitter indent).
+          vim.bo[buf].syntax = 'ON'
+        else
+          -- Treesitter-based indentation (experimental).
+          vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+        end
+      end
+
+      vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('treesitter-enable', { clear = true }),
+        callback = function(args)
+          enable(args.buf)
+        end,
+      })
+
+      -- Apply to buffers already open when this loads (e.g. `nvim file.md`).
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) then
+          enable(buf)
+        end
+      end
+    end,
+    -- Other nvim-treesitter modules (incremental selection, textobjects, context) live in
+    -- separate `*-main`-compatible plugins now; add them here if you want them.
   },
   {
     'olrtg/nvim-emmet',
